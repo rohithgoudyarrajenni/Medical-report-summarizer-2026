@@ -74,16 +74,16 @@ MEDICAL_TERMS = {
     "hemoglobin": {
         "meaning": (
             "Hemoglobin is a protein in red blood cells that carries "
-            "oxygen. Its value should be interpreted using the reported "
-            "units and laboratory reference range."
+            "oxygen. Interpret its value using the reported units and "
+            "laboratory reference range."
         ),
         "type": "Laboratory term"
     },
     "white blood cells": {
         "meaning": (
             "White blood cells help the body fight infections and "
-            "participate in immune responses. The count must be "
-            "interpreted using the laboratory reference range."
+            "participate in immune responses. Interpret the count using "
+            "the laboratory reference range."
         ),
         "type": "Laboratory term"
     },
@@ -125,17 +125,51 @@ def explain_medical_terms(text):
     if not isinstance(text, str) or not text.strip():
         return []
 
+    # Convert text to lowercase and normalize whitespace.
     normalized = re.sub(r"\s+", " ", text.lower())
+
     explanations = []
+    matched_terms = set()
 
     for term, info in MEDICAL_TERMS.items():
-        pattern = r"(?<!\w)" + re.escape(term) + r"(?!\w)"
+        # Allow one or more spaces between words in a term.
+        words_pattern = r"\s+".join(
+            re.escape(word) for word in term.split()
+        )
+        pattern = r"(?<!\w)" + words_pattern + r"(?!\w)"
 
         if re.search(pattern, normalized):
+            matched_terms.add(term)
             explanations.append({
                 "term": term.title(),
                 "meaning": info["meaning"],
                 "type": info["type"]
             })
+
+    # Recognize common variations in ultrasound report wording.
+    additional_terms = [
+        {
+            "key": "mildly bulky uterus",
+            "pattern": r"\b(?:mildly\s+)?bulky\s+uterus\b"
+        },
+        {
+            "key": "uterine fibroids",
+            "pattern": r"\b(?:uterine\s+)?fibroids?\b"
+        }
+    ]
+
+    for item in additional_terms:
+        term = item["key"]
+
+        if term not in matched_terms and re.search(
+            item["pattern"], normalized
+        ):
+            info = MEDICAL_TERMS[term]
+            explanations.append({
+                "term": term.title(),
+                "meaning": info["meaning"],
+                "type": info["type"]
+            })
+            matched_terms.add(term)
 
     return explanations
