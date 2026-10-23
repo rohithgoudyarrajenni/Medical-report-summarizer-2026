@@ -51,3 +51,6 @@ if st.button("Analyze Report", type="primary"):
             "medical_report_results.csv", "text/csv"
         )
         st.caption("Automated range comparisons are informational and not a diagnosis.")
+        st.subheader("OCR Extracted Text")
+st.text_area("Extracted text", text, height=300)
+
