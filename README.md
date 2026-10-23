@@ -95,4 +95,11 @@ GitHub: [rohithgoudyarrajenni](https://github.com/rohithgoudyarrajenni)
 
 ---
 
+## 🚀 Live Application
+
+**[Open Medical Report Summarizer](https://medical-report-summarizer-2026-wgpd5wn5mjr2txzyqynpbw.streamlit.app/)**
+
+Try the application online to upload a report, view recognized findings, and explore medical terms explained in simple English.
+
+
 *Educational project only. Always verify extracted information against the original report and consult a qualified healthcare professional for medical interpretation.*
