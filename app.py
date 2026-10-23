@@ -1,166 +1,127 @@
 
+import io
 import re
-import pandas as pd
+import streamlit as st
+
+st.set_page_config(
+    page_title="Medical Report Summarizer",
+    page_icon="🩺",
+    layout="wide"
+)
 
 
-def analyze_report(text):
-    """
-    Analyze extracted medical report text.
-    Supports basic laboratory and radiology keyword detection.
-    This is an educational aid, not a diagnostic system.
-    """
+def read_file(uploaded_file):
+    try:
+        from pypdf import PdfReader
 
-    if not isinstance(text, str) or not text.strip():
-        return pd.DataFrame(
-            columns=["Section", "Finding", "Details"]
-        )
+        pdf_bytes = uploaded_file.getvalue()
+        reader = PdfReader(io.BytesIO(pdf_bytes))
 
-    # Normalize text for matching
-    normalized = re.sub(r"\s+", " ", text.lower()).strip()
+        pages = [page.extract_text() or "" for page in reader.pages]
+        text = "\n".join(pages).strip()
 
-    results = []
+        # OCR for scanned PDFs
+        if len(text) < 100:
+            from pdf2image import convert_from_bytes
+            import pytesseract
 
-    def add(section, finding, details):
-        results.append({
-            "Section": section,
-            "Finding": finding,
-            "Details": details
-        })
+            images = convert_from_bytes(pdf_bytes, dpi=200)
 
-    # -----------------------------------
-    # 1. UTERUS AND FIBROID FINDINGS
-    # -----------------------------------
-    if re.search(r"\b(mildly bulky|mild bulky|bulky uterus)\b", normalized):
-        add(
-            "Radiology",
-            "Bulky uterus",
-            "The report describes the uterus as mildly bulky."
-        )
+            ocr_pages = [
+                pytesseract.image_to_string(image)
+                for image in images
+            ]
+            text = "\n".join(ocr_pages).strip()
 
-    if re.search(r"\bfibroid", normalized):
-        measurements = re.findall(
-            r"(\d+(?:\.\d+)?)\s*[x×]\s*(\d+(?:\.\d+)?)\s*mm",
-            normalized
-        )
+        # Clean extracted text
+        text = text.replace("/n", "\n")
+        text = text.replace("\\n", "\n")
+        text = re.sub(r"\n{3,}", "\n\n", text)
+        text = text.strip()
 
-        fibroid_details = (
-            "The report mentions uterine fibroid(s). "
-            "Clinical significance depends on symptoms and medical review."
-        )
+        if not text:
+            raise ValueError(
+                "No readable text found. Try a clearer PDF."
+            )
 
-        if measurements:
-            fibroid_details += (
-                " Measurements detected in the report: "
-                + ", ".join(
-                    f"{a} × {b} mm" for a, b in measurements
+        return text
+
+    except Exception as e:
+        raise RuntimeError(f"Could not read this PDF: {e}") from e
+
+
+# Always render the interface first
+st.title("🩺 Medical Report Summarizer")
+
+st.write(
+    "Upload a medical report PDF to extract text and "
+    "identify findings supported by the analyzer."
+)
+
+st.info(
+    "This tool provides educational summaries only. "
+    "It does not diagnose medical conditions."
+)
+
+uploaded_file = st.file_uploader(
+    "Choose a medical report (PDF)",
+    type=["pdf"],
+    key="medical_report"
+)
+
+if uploaded_file is not None:
+    st.success(f"Selected file: {uploaded_file.name}")
+
+    if st.button("Analyze Report", type="primary"):
+        try:
+            with st.spinner("Extracting report text..."):
+                text = read_file(uploaded_file)
+
+            st.subheader("Extracted Report Text")
+            st.text_area(
+                "Review the extracted text",
+                value=text,
+                height=250,
+                key="extracted_text"
+            )
+
+            # Import the analyzer only when analysis is requested
+            from analyzer import analyze_report
+
+            with st.spinner("Analyzing report..."):
+                results = analyze_report(text)
+
+            st.subheader("Analysis Results")
+
+            if results is None:
+                st.warning("The analyzer returned no results.")
+
+            elif hasattr(results, "empty") and results.empty:
+                st.info(
+                    "No supported findings were detected. "
+                    "Please review the original report."
                 )
-                + ". Check the original report to confirm which measurements "
-                  "belong to the fibroids."
-            )
 
-        add(
-            "Radiology",
-            "Uterine fibroids",
-            fibroid_details
-        )
+            elif isinstance(results, str):
+                st.write(results)
 
-    # Detect explicitly described intramural lesions
-    if "intramural" in normalized and (
-        "lesion" in normalized or "fibroid" in normalized
-    ):
-        add(
-            "Radiology",
-            "Intramural uterine lesions",
-            "The report describes lesion(s) within the uterine muscle wall."
-        )
+            elif isinstance(results, dict):
+                st.json(results)
 
-    # -----------------------------------
-    # 2. OTHER RADIOLOGY FINDINGS
-    # -----------------------------------
-    if re.search(r"\b(normal ovaries|both ovaries are normal)\b", normalized):
-        add(
-            "Radiology",
-            "Ovaries",
-            "Both ovaries are described as normal in the report."
-        )
+            else:
+                st.dataframe(
+                    results,
+                    use_container_width=True,
+                    hide_index=True
+                )
 
-    if "no free fluid" in normalized:
-        add(
-            "Radiology",
-            "Free fluid",
-            "No free fluid is reported in the examined area."
-        )
+        except Exception as e:
+            st.error("The report could not be processed.")
+            st.exception(e)
 
-    if "no ascites" in normalized:
-        add(
-            "Radiology",
-            "Ascites",
-            "No ascites is reported."
-        )
+st.divider()
 
-    if "gaseous distension" in normalized or "bowel loops" in normalized:
-        add(
-            "Radiology",
-            "Bowel gas",
-            "Bowel gas or gaseous distension is mentioned. Interpret this finding clinically."
-        )
-
-    if (
-        "kidneys are normal" in normalized
-        or "both kidneys are normal" in normalized
-    ):
-        add(
-            "Radiology",
-            "Kidneys",
-            "The kidneys are described as normal in the report."
-        )
-
-    if (
-        "liver" in normalized
-        and ("homogenous echotexture" in normalized
-             or "homogeneous echotexture" in normalized)
-    ):
-        add(
-            "Radiology",
-            "Liver",
-            "The liver is described as having homogeneous echotexture."
-        )
-
-    # -----------------------------------
-    # 3. BASIC LABORATORY VALUE DETECTION
-    # -----------------------------------
-    # These are extracted values only; no diagnosis or reference
-    # ranges are inferred from numbers alone.
-    lab_patterns = [
-        ("Hemoglobin", r"\b(?:haemoglobin|hemoglobin|hgb|hb)\b"),
-        ("WBC", r"\b(?:wbc|white blood cell count|total leucocyte count)\b"),
-        ("Platelets", r"\b(?:platelet count|platelets)\b"),
-        ("Glucose", r"\b(?:blood glucose|fasting glucose|glucose)\b"),
-        ("Creatinine", r"\bcreatinine\b"),
-        ("Cholesterol", r"\bcholesterol\b"),
-    ]
-
-    for label, pattern in lab_patterns:
-        if re.search(pattern, normalized):
-            add(
-                "Laboratory",
-                label,
-                f"The report contains a mention of {label}. "
-                "Review the original value, units, and laboratory reference range."
-            )
-
-    # -----------------------------------
-    # 4. FALLBACK WHEN NO RULE MATCHES
-    # -----------------------------------
-    if not results:
-        add(
-            "General",
-            "No supported findings detected",
-            "Text was extracted, but the current rules did not recognize "
-            "specific findings. Review the extracted text and original report."
-        )
-
-    return pd.DataFrame(
-        results,
-        columns=["Section", "Finding", "Details"]
-    )
+st.caption(
+    "Always verify extracted text against the original report "
+    "and consult a qualified healthcare professional."
+)
