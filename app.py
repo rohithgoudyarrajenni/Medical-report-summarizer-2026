@@ -204,9 +204,20 @@ if "report_text" in st.session_state:
                 st.markdown(f"**{finding_name}**")
                 st.caption(section_name)
                 st.write(details)
+st.divider()
+st.header("📖 Medical Terms in Simple English")
 
+term_explanations = explain_medical_terms(text)
+
+if term_explanations:
+    for item in term_explanations:
+        with st.expander(f"🔹 {item['term']}"):
+            st.caption(item["type"])
+            st.write(item["meaning"])
+else:
+    st.info("No supported medical terms found in this report.")
     # Full results table
-    st.header("📋 Detailed Analysis")
+    
 
     if not findings.empty:
         st.dataframe(
